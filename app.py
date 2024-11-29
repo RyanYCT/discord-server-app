@@ -69,8 +69,8 @@ def get_report(report_type="overall"):
                         if day_dir.is_dir():
                             for file_name in day_dir.iterdir():
                                 if file_name.is_file():
-                                    # Get the creation time of the file
-                                    file_time = datetime.strptime(file_name.stem, "%H")
+                                    # Get the modification time of the file
+                                    file_time = datetime.fromtimestamp(file_name.stat().st_mtime)
                                     if latest_time is None or file_time > latest_time:
                                         # Update the latest time and file name
                                         latest_time = file_time
@@ -84,7 +84,7 @@ def get_report(report_type="overall"):
         try:
             with open(latest_file, "r", encoding="utf-8") as f:
                 report = f.read()
-            return jsonify({"report_time": latest_time, "report": report})
+            return jsonify({"report_time": latest_time.isoformat(), "report": report})
 
         except Exception as e:
             return jsonify({"error": str(e)}), 500

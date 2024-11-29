@@ -9,14 +9,14 @@ It monitors key product information regularly, calculates rates of return, revea
 
 ## Getting Started
 ### Prerequisites
-- Python 3.8 or higher
+- Python 3.10 or higher
 - Other dependencies listed in `requirements.txt`
 
 ### Installation
 1. Clone the repository:
     ```bash
-    git clone https://github.com/<yourusername>/guild-applications.git
-    cd guild-applications
+    git clone https://github.com/RyanYCT/guild-application.git
+    cd guild-application
     ```
 
 2. Install the required packages:
