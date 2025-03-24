@@ -24,3 +24,10 @@ ENDPOINTS = {
     "bid": "GetBiddingInfoList",
     "price": "GetMarketPriceInfo",
 }
+
+SCRAPE_TABLES = {
+    "list": "marketlist",
+    "sub": "marketsublist",
+    "bid": "biddinginfo",
+    "price": "priceinfo",
+}

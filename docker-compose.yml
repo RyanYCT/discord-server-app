@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  api_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=api.app
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+      - TZ=Asia/Hong_Kong
+    env_file: .env
+    working_dir: /app
+    volumes:
+      - ./common:/app/common
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - my_network
+
+  etl_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.etl
+    env_file: .env
+    working_dir: /app
+    volumes:
+      - ./common:/app/common
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+      - TZ=Asia/Hong_Kong
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    external: true

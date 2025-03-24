@@ -1,0 +1,21 @@
+# Python runtime base image
+FROM python:3.11
+
+# Set working directory
+WORKDIR /app
+
+# Copy common folder
+COPY common/ /app/common/
+
+# Copy project files
+COPY etl/ /app/etl/
+
+# Install Python dependencies
+COPY requirements.etl.txt .
+RUN pip install --no-cache-dir -r requirements.etl.txt
+
+# Set Python path to include common
+ENV PYTHONPATH=/app
+
+# Run etl scheduler
+CMD ["python", "-m", "etl.scheduler"]

@@ -6,7 +6,7 @@ import requests
 # Add the parent directory to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import unittest
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import scraper
 
@@ -89,6 +89,30 @@ class TestScraper(unittest.TestCase):
             "sid": None,
         }
 
+    def test_get_item_id(self):
+        test_cases = [
+            # Valid case
+            ("Deboreka Series", [11653, 11882, 12094, 12276]),
+            ("Deboreka Necklace", 11653),
+            ("Deboreka Earring", 11882),
+            ("Deboreka Ring", 12094),
+            ("Deboreka Belt", 12276),
+            # Invalid case
+            ("Invalid Item", ValueError),
+        ]
+
+        for item_name, expected in test_cases:
+            with self.subTest(msg=f"Testing item : {item_name}"):
+                # Valid case
+                if isinstance(expected, (list, int)):
+                    result = scraper.get_item_id(item_name)
+                    self.assertEqual(result, expected)
+
+                # Invalid case
+                else:
+                    with self.assertRaises(expected):
+                        scraper.get_item_id(item_name)
+
     def test_get_endpoint(self):
         test_cases = [
             # Valid case
@@ -118,10 +142,10 @@ class TestScraper(unittest.TestCase):
     def test_get_table_name(self):
         test_cases = [
             # Valid case
-            ("list", "WorldMarket"),
-            ("sub", "WorldMarketSub"),
-            ("bid", "BiddingInfo"),
-            ("price", "MarketPriceInfo"),
+            ("list", "marketlist"),
+            ("sub", "marketsublist"),
+            ("bid", "biddinginfo"),
+            ("price", "priceinfo"),
         ]
 
         for endpoint_key, expected in test_cases:
@@ -129,30 +153,6 @@ class TestScraper(unittest.TestCase):
                 # Valid case
                 result = scraper.get_table_name(endpoint_key)
                 self.assertEqual(result, expected)
-
-    def test_get_item_id(self):
-        test_cases = [
-            # Valid case
-            ("Deboreka Series", [11653, 11882, 12094, 12276]),
-            ("Deboreka Necklace", 11653),
-            ("Deboreka Earring", 11882),
-            ("Deboreka Ring", 12094),
-            ("Deboreka Belt", 12276),
-            # Invalid case
-            ("Invalid Item", ValueError),
-        ]
-
-        for item_name, expected in test_cases:
-            with self.subTest(msg=f"Testing item : {item_name}"):
-                # Valid case
-                if isinstance(expected, (list, int)):
-                    result = scraper.get_item_id(item_name)
-                    self.assertEqual(result, expected)
-
-                # Invalid case
-                else:
-                    with self.assertRaises(expected):
-                        scraper.get_item_id(item_name)
 
     def test_get_payload(self):
         test_cases = [
