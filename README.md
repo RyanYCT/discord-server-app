@@ -134,7 +134,7 @@ The analyzer module processes market data and generates insights.
 The reports that would be posted by the bot are similar to the following:
 
 ### Top Performers (Profitable)
-Overall ranking list that sorted by rate of return, reveal the best item at the time.
+Presents an overall ranking list sorted by the rate of return, highlighting the most profitable items at the time.
 
 | name   | enhance | price        | profit          | rate     | stock |
 |--------|---------|--------------|-----------------|----------|-------|
@@ -146,14 +146,14 @@ Overall ranking list that sorted by rate of return, reveal the best item at the 
 | item98 | 0       | 8250000      | -227360568207.5 | 0.145277 | 101   |
 | item99 | 5       | 0            | -8124244895.0   | 0.14525  | 0     |
 
-### Top Performers (Category specific)
-Similar to overall ranking with a filter for particular type of item.
+### Sales Trend (Category specific)
+Provides insight for item sniping by monitoring the number of trades, this analysis identifies gaps between supply and sales volume.
 
-| name   | enhance | price        | profit          | rate     | stock |
-|--------|---------|--------------|-----------------|----------|-------|
-| A Ring | 3       | 12500000000  | 9372487605.0    | 7.106571 | 0     |
-| B Ring | 1       | 150000000000 | 111284330105.0  | 6.619053 | 0     |
-| C Ring | 5       | 31400000000  | 23133962605.0   | 6.336776 | 4     |
+| name   | buyers  | 7-day trading volume changes | buying chance |
+|--------|---------|------------------------------|---------------|
+| item01 | 82      | 80                           | 0.975         |
+| item03 | 65      | 30                           | 0.462         |
+| item02 | 133     | 13                           | 0.098         |
 
 ## Endpoints
 RESTful API endpoints for Discord bot integration.
