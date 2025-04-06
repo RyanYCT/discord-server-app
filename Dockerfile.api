@@ -9,6 +9,7 @@ COPY common/ /app/common/
 
 # Copy project files
 COPY api/ /app/api/
+COPY etl/analyzer/ /app/etl/analyzer/
 
 # Install Python dependencies
 COPY requirements.api.txt .

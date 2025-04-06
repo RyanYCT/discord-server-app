@@ -21,13 +21,27 @@ API_LOGGING_CONFIG.update(
                 "formatter": "default",
             },
         },
-        "root": {
-            "level": "INFO",
-            "handlers": ["console", "file", "wsgi"],
+        "loggers": {
+            "flask": {
+                "level": "INFO",
+                "handlers": ["console", "file", "wsgi"],
+            },
+            "werkzeug": {
+                "level": "INFO",
+                "handlers": ["console", "file", "wsgi"],
+            },
+            "analyzer": {
+                "level": "INFO",
+                "handlers": ["console", "file"],
+            },
+            "scraper": {
+                "level": "INFO",
+                "handlers": ["console", "file"],
+            },
         },
     }
 )
 
 ALLOWED_REPORTS = {
-    "profit": "profitabilityreport",
+    "profit": "report_profitability",
 }

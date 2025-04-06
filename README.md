@@ -146,7 +146,7 @@ Presents an overall ranking list sorted by the rate of return, highlighting the 
 | item98 | 0       | 8250000      | -227360568207.5 | 0.145277 | 101   |
 | item99 | 5       | 0            | -8124244895.0   | 0.14525  | 0     |
 
-### Sales Trend (Category specific)
+### Sales Trends
 Provides insight for item sniping by monitoring the number of trades, this analysis identifies gaps between supply and sales volume.
 
 | name   | buyers  | 7-day trading volume changes | buying chance |

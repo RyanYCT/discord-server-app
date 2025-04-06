@@ -1,4 +1,5 @@
 import logging
+import signal
 from logging.config import dictConfig
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,6 +12,7 @@ from etl.scraper.scraper import scraper
 
 load_dotenv()
 
+
 # Configure logging
 dictConfig(etl_settings.ETL_LOGGING_CONFIG)
 logger = logging.getLogger(__name__)
@@ -20,7 +22,7 @@ def run_etl():
     try:
         # Run scraper for different endpoints
         endpoint_keys = etl_settings.ENDPOINTS.keys()
-        item_name = "Deboreka Series"
+        item_name = "all"
         for endpoint_key in endpoint_keys:
             logger.info(f"Running scraper for '{endpoint_key}'")
             scraper(endpoint_key, item_name=item_name)
@@ -50,8 +52,20 @@ def main():
     try:
         scheduler.start()
         logger.info("Scheduler started")
-        while True:
-            pass
+
+        # For graceful shutdown
+        def signal_handler(signum, frame):
+            scheduler.shutdown()
+            logger.info("Scheduler shutdown")
+            exit(0)
+
+        # Register signal handlers
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        # Block the main thread indefinitely without consuming CPU
+        signal.pause()
+
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
         logger.info("Scheduler shutdown")

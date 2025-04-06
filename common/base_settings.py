@@ -38,8 +38,10 @@ BASE_LOGGING_CONFIG = {
             "stream": "ext://sys.stdout",
         },
     },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console", "file"],
+    "loggers": {
+        "": {
+            "level": "INFO",
+            "handlers": ["console"],
+        }
     },
 }

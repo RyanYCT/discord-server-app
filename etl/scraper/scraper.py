@@ -11,7 +11,7 @@ from psycopg2.extras import execute_batch
 
 from common import etl_settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("scraper")
 
 
 class ScraperError(Exception):
@@ -33,10 +33,31 @@ class ValidationError(ScraperError):
 def load_item_list() -> Dict[str, Union[List[int], int]]:
     logger.info("Loading item list")
     try:
+        # Locate the JSON file, assuming the JSON file is in the same directory
         current_dir = Path(__file__).resolve().parent
         json_path = current_dir / "item_list.json"
         with open(json_path, "r") as file:
             item_list = json.load(file)
+
+        # Deduplicate item id for each category
+        changes_made = False
+        for category, ids in item_list.items():
+            if isinstance(ids, list):
+                # Deduplicates by converting to set and back to list
+                deduplicated_ids = sorted(list(set(ids)))
+                # If any duplicates be removed
+                if len(deduplicated_ids) != len(ids):
+                    logger.info(f"Deduplicated '{len(ids) - len(deduplicated_ids)}' item ids")
+                    changes_made = True
+                item_list[category] = deduplicated_ids
+            else:
+                item_list[category] = ids
+
+        # Update the JSON file if duplicates removed
+        if changes_made:
+            with open(json_path, "w") as file:
+                json.dump(item_list, file, indent=4)
+            logger.info("Successfully deduplicate and update item list")
 
         if not item_list:
             raise ValueError("Item list is empty")
@@ -46,7 +67,7 @@ def load_item_list() -> Dict[str, Union[List[int], int]]:
         raise FileNotFoundError(f"File not found: {json_path}")
 
 
-def get_item_id(item_name: str) -> List[int]:
+def get_item_id(item_name: str = "all") -> List[int]:
     """Get item id from item list"""
     logger.info(f"Getting item id for '{item_name}'")
     item_list = load_item_list()
@@ -56,6 +77,18 @@ def get_item_id(item_name: str) -> List[int]:
         raise ValueError(f"Invalid item name: {item_name}")
     logger.debug(f"{item_id=}")
     return item_id
+
+
+def get_item_category(item_list: list, item_id: int) -> str:
+    """Determine category of an item based on classification"""
+    # Check if item id is in any game shop item categories
+    if item_id in item_list["buff"]:
+        return "buff"
+    elif item_id in item_list["costume"]:
+        return "costume"
+    elif item_id in item_list["accessory"]:
+        return "accessory"
+    return "unknown"
 
 
 def get_endpoint(endpoint_key: str) -> str:
@@ -150,9 +183,11 @@ def fetch_data(url: str, payload: Dict) -> Optional[List[Dict]]:
             for item in sublist:
                 flattened_data.append(item)
 
-        # Add timestamp
+        # Add timestamp, category, and convert lastSoldTime to datetime
+        item_list = load_item_list()
         for i in range(len(flattened_data)):
             flattened_data[i]["scrapeTime"] = scrape_time
+            flattened_data[i]["category"] = get_item_category(item_list, flattened_data[i]["id"])
             flattened_data[i]["lastSoldTime"] = dt.fromtimestamp(flattened_data[i]["lastSoldTime"])
 
         logger.debug(f"{len(flattened_data)=}")
@@ -205,7 +240,9 @@ def store_data(data: Dict, table_name: str) -> None:
                     create_table_query = sql.SQL(
                         """
                         CREATE TABLE IF NOT EXISTS {table_name} (
+                            scrapeID SERIAL PRIMARY KEY,
                             scrapeTime TIMESTAMP,
+                            category VARCHAR(16),
                             name VARCHAR(255),
                             id INT,
                             sid INT,
@@ -217,9 +254,10 @@ def store_data(data: Dict, table_name: str) -> None:
                             priceMin BIGINT,
                             priceMax BIGINT,
                             lastSoldPrice BIGINT,
-                            lastSoldTime TIMESTAMP
+                            lastSoldTime TIMESTAMP,
+                            UNIQUE (scrapeTime, id, sid)
                         )
-                    """
+                        """
                     ).format(table_name=sql.Identifier(table_name))
                     cur.execute(create_table_query)
 
@@ -227,17 +265,17 @@ def store_data(data: Dict, table_name: str) -> None:
                     # Prepare for batch insert
                     insert_query = sql.SQL(
                         """
-                        INSERT INTO {table} (
-                            scrapeTime, name, id, sid, minEnhance, 
+                        INSERT INTO {table_name} (
+                            scrapeTime, category, name, id, sid, minEnhance, 
                             maxEnhance, basePrice, currentStock, 
                             totalTrades, priceMin, priceMax, 
                             lastSoldPrice, lastSoldTime
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, 
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, 
                             %s, %s, %s, %s, %s
                         )
-                    """
-                    ).format(table=sql.Identifier(table_name))
+                        """
+                    ).format(table_name=sql.Identifier(table_name))
 
                     # Prepare records for batch insert
                     records = []
@@ -245,6 +283,7 @@ def store_data(data: Dict, table_name: str) -> None:
                         records.append(
                             (
                                 item["scrapeTime"],
+                                item["category"],
                                 item["name"],
                                 item["id"],
                                 item["sid"],
@@ -289,8 +328,3 @@ def scraper(endpoint_key: str, **kwargs) -> None:
 
     except (ValidationError, DatabaseError, APIError, ScraperError) as e:
         logger.error(f"Scraper error: {e}")
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    scraper("sub", item_name="Deboreka Series")

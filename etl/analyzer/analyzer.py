@@ -10,7 +10,7 @@ from psycopg2.extras import execute_batch
 
 from common import etl_settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("analyzer")
 
 
 class AnalyzerError(Exception):
@@ -49,8 +49,7 @@ def fetch_data(
     table_name: str,
     name: Optional[str] = None,
     sid: Optional[int] = None,
-    date: Optional[str] = None,
-    hour: Optional[int] = None,
+    datetime_filter: Optional[dt] = None,
 ) -> pd.DataFrame:
     """
     Fetch data from the database based on given parameters.
@@ -63,10 +62,8 @@ def fetch_data(
         Item name to filter results
     sid : int, optional
         Enhancement level to filter results
-    date : str, optional
-        Date to filter results (format: YYYY-MM-DD)
-    hour : int, optional
-        Hour to filter results (0-23)
+    datetime_filter : datetime, optional
+        Datetime to filter results. Will fetch data for the specified hour
 
     Returns
     -------
@@ -81,7 +78,7 @@ def fetch_data(
         If database operation fails
     """
     logger.info(f"Fetching data from '{table_name}'")
-    logger.debug(f"{table_name=}, {name=}, {sid=}, {date=}, {hour=}")
+    logger.debug(f"{table_name=}, {name=}, {sid=}, {datetime_filter=}")
     try:
         with psycopg2.connect(**etl_settings.DATABASE_CONFIG) as conn:
             # Validate input to prevent dynamic injection
@@ -96,11 +93,13 @@ def fetch_data(
                 fields=sql.SQL(",").join(
                     [
                         sql.Identifier("scrapetime"),
+                        sql.Identifier("category"),
                         sql.Identifier("name"),
                         sql.Identifier("id"),
                         sql.Identifier("sid"),
                         sql.Identifier("currentstock"),
                         sql.Identifier("lastsoldprice"),
+                        sql.Identifier("totaltrades"),
                     ]
                 ),
                 table_name=sql.Identifier(table_name),
@@ -117,18 +116,17 @@ def fetch_data(
                 params.append(sid)
 
             # Date handling
-            # Case 1: no date, no hour. Get the latest data.
-            if not date and not hour:
+            # Case 1: No datetime filter provided, get the latest data
+            if not datetime_filter:
                 current_datetime = dt.now()
                 start_time = current_datetime.replace(minute=0, second=0, microsecond=0)
                 query = sql.SQL(" ").join([query, sql.SQL("AND scrapetime >= %s")])
                 params.append(start_time)
 
-            # Case 2: both date and hour
-            elif date and hour:
-                parsed_date = dt.strptime(date, "%Y-%m-%d")
-                start_time = parsed_date.replace(hour=int(hour), minute=0, second=0, microsecond=0)
-                end_time = parsed_date.replace(hour=int(hour), minute=59, second=59, microsecond=999999)
+            # Case 2: datetime filter provided, get data for the specific hour
+            else:
+                start_time = datetime_filter.replace(minute=0, second=0, microsecond=0)
+                end_time = datetime_filter.replace(minute=59, second=59, microsecond=999999)
                 query = sql.SQL(" ").join([query, sql.SQL("AND scrapetime >= %s AND scrapetime < %s")])
                 params.extend([start_time, end_time])
 
@@ -231,11 +229,16 @@ def profit_analyzer(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     current_time = dt.now()
-    # Round to nearest minute
-    analyze_time = current_time.strftime("%Y-%m-%d %H:00")
+    analyze_time = current_time.replace(minute=0, second=0, microsecond=0)
 
     records = []
     try:
+        # Filter for specific conditions
+        df = df[df["category"] == "accessory"]
+        if df.empty:
+            logger.warning("No accessory data to analyze")
+            return pd.DataFrame()
+
         # Group by item id to ensure processing the same item
         for item_id in df["id"].unique():
             # Create item dataframe
@@ -248,6 +251,7 @@ def profit_analyzer(df: pd.DataFrame) -> pd.DataFrame:
                 records.append(
                     {
                         "analyzetime": analyze_time,
+                        "category": row["category"],
                         "name": row["name"],
                         "enhance": row["sid"],
                         "price": row["lastsoldprice"],
@@ -305,7 +309,9 @@ def store_data(analyzed_df: pd.DataFrame, table_name: str) -> None:
                     create_table_query = sql.SQL(
                         """
                         CREATE TABLE IF NOT EXISTS {table_name} (
+                            analyzeID SERIAL PRIMARY KEY,
                             analyzeTime TIMESTAMP(0),
+                            category VARCHAR(16),
                             name VARCHAR(255),
                             enhance INT,
                             price BIGINT,
@@ -314,7 +320,7 @@ def store_data(analyzed_df: pd.DataFrame, table_name: str) -> None:
                             stock BIGINT,
                             UNIQUE (analyzetime, name, enhance)
                         );
-                    """
+                        """
                     ).format(table_name=sql.Identifier(table_name))
                     cur.execute(create_table_query)
 
@@ -322,15 +328,16 @@ def store_data(analyzed_df: pd.DataFrame, table_name: str) -> None:
                     # Prepare for batch insert
                     insert_query = sql.SQL(
                         """
-                        INSERT INTO {table} (analyzeTime, name, enhance, price, profit, rate, stock)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO {table_name} (analyzeTime, category, name, enhance, price, profit, rate, stock)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (analyzetime, name, enhance) DO NOTHING;
                         """
-                    ).format(table=sql.Identifier(table_name))
+                    ).format(table_name=sql.Identifier(table_name))
                     records = []
                     for item in analyzed_df.to_dict(orient="records"):
                         record = (
                             item["analyzetime"],
+                            item["category"],
                             item["name"],
                             item["enhance"],
                             item["price"],
@@ -366,6 +373,85 @@ def analyzer(report_type: str) -> None:
         logger.error(f"Analyzer error: {e}")
 
 
-if __name__ == "__main__":
-    logger.basicConfig(level=logging.INFO)
-    analyzer(report_type="profit")
+def trends_analyzer(period: int):
+    """
+    Analyzes the trading volume trends for items.
+
+    Parameters
+    ----------
+    period : int
+        The number of days to analyze.
+
+    Returns
+    -------
+    trends_df : pd.DataFrame
+        A sorted dataframe with trading trends.
+
+    Notes
+    -----
+    This function is designed to generate a report dynamically based on the given time interval.
+    It does not store the report in a database but instead returns the trends as a pandas DataFrame, sorted by average trades per day in descending order.
+    The function dynamically calculates time differences to ensure accuracy for both short and long intervals.
+    If the time interval is shorter than 1 day, the result will be roughly estimated.
+    """
+    logger.info("Analyzing trends")
+    table_name = get_table_name("trend")
+
+    # Get the current date and time
+    current_datetime = dt.now()
+    analyze_datetime = current_datetime.replace(minute=0, second=0, microsecond=0)
+    # Calculate the past date and time based on the number of days
+    past_datetime = current_datetime - datetime.timedelta(days=period)
+    logger.debug(f"{past_datetime=}")
+
+    # Fetch data for the current and past dates
+    current_df = fetch_data(table_name=table_name, datetime_filter=current_datetime)
+    past_df = fetch_data(table_name=table_name, datetime_filter=past_datetime)
+    if current_df.empty or past_df.empty:
+        logger.warning("Dataframe is empty")
+        return pd.DataFrame()
+
+    # Prevent divide by zero error, convert time difference to fraction of a day
+    time_difference_seconds = (current_datetime - past_datetime).total_seconds()
+    print(f"{time_difference_seconds=}")
+    time_difference_days = time_difference_seconds / 86400
+
+    # Merge current and past dataframes
+    merge_df = current_df.merge(
+        past_df,
+        on=["category", "name", "id", "sid"],
+        how="inner",
+        suffixes=("_current", "_past"),
+    )
+    logger.debug(f"{merge_df.shape=}")
+
+    # Calculate volume change
+    merge_df["volumechange"] = merge_df["totaltrades_current"] - merge_df["totaltrades_past"]
+
+    # Calculate average trades per day
+    trading_end_time = current_datetime.replace(hour=23, minute=0, second=0, microsecond=0)
+    if time_difference_seconds < 86400:
+        remaining_seconds = (trading_end_time - current_datetime).total_seconds()
+        remaining_hours = remaining_seconds / 3600
+        if remaining_hours > 0:
+            # Scale by remaining hours
+            merge_df["averagetradesperday"] = merge_df["volumechange"] * (24 / remaining_hours)
+    # More than 1 day
+    else:
+        merge_df["averagetradesperday"] = merge_df["volumechange"] / time_difference_days
+
+    # Create result dataframe
+    trend_df = pd.DataFrame(
+        {
+            "analyzetime": analyze_datetime,
+            "category": merge_df["category"],
+            "name": merge_df["name"],
+            "enhance": merge_df["sid"],
+            "price": merge_df["lastsoldprice_current"],
+            "stock": merge_df["currentstock_current"],
+            "volumechange": merge_df["volumechange"],
+            "averagetradesperday": merge_df["averagetradesperday"],
+        }
+    )
+    logger.debug(f"{trend_df.shape=}")
+    return trend_df.sort_values(by="averagetradesperday", ascending=False)
